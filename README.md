@@ -50,11 +50,15 @@ To stop it, press `Ctrl + C` in the terminal.
 
 ## Using the app
 
-You'll see three pictures:
+You'll see four pictures:
 
 1. **Real scan**: the normal, slow scan
-2. **AI's version**: the AI's picture, made from only about a quarter of the data
-3. **Where the AI is guessing**: bright yellow means the AI is unsure
+2. **Fast scan, no AI**: what the scanner gives with only about a quarter of the data
+3. **AI's version**: the AI's picture, made from that same fast scan
+4. **Where the AI is guessing**: bright yellow means the AI is unsure
+
+The AI rebuilds the picture 10 extra times, each time leaving out a few of the measured
+lines at random. Where those rebuilds disagree, it is guessing.
 
 Blue squares are lesions marked by a radiologist.
 
