@@ -1,0 +1,12 @@
+# install torch with CUDA from https://pytorch.org first (e.g. the cu118 build)
+torch
+numpy
+h5py
+pandas
+scipy
+scikit-image
+matplotlib
+pillow
+requests
+pyyaml
+flask

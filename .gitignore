@@ -1,0 +1,13 @@
+# fastMRI data is under a data-use agreement: never commit scans or images made from them
+*.h5
+data/
+DATA/
+outputs*/
+*.log
+# downloaded automatically by trustmap.py / app.py (119 MB, over GitHub's file limit)
+models/
+*.pt
+# cloned separately, see README
+third_party/
+__pycache__/
+*.pyc

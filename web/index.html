@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radio Silence</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0f1012;
+  --surface-1: #1a1a19;
+  --surface-2: #232321;
+  --border: #33332f;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --text-muted: #8f8e86;
+  --accent: #5ee0ff;          /* annotation boxes + focus */
+  --series-1: #3987e5;        /* 4x */
+  --series-2: #d95926;        /* 8x */
+  --grid: #2c2c29;
+  --radius: 10px;
+  --inferno: linear-gradient(90deg, #000004, #1b0c41, #4a0c6b, #781c6d, #a52c60, #cf4446, #ed6925, #fb9b06, #f7d13d, #fcffa4);
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text-primary); font-size: 14px; line-height: 1.45; }
+button, select, input { font: inherit; color: inherit; }
+a { color: var(--accent); }
+
+header { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand svg { flex: none; }
+.brand h1 { font-size: 18px; margin: 0; letter-spacing: .2px; }
+.brand p { margin: 0; color: var(--text-muted); font-size: 12.5px; }
+nav { display: flex; gap: 4px; margin-left: auto; }
+nav button { background: none; border: 1px solid transparent; padding: 7px 14px; border-radius: 8px; cursor: pointer; color: var(--text-secondary); }
+nav button[aria-selected="true"] { background: var(--surface-2); border-color: var(--border); color: var(--text-primary); }
+.chip { font-size: 12px; color: var(--text-muted); border: 1px solid var(--border); padding: 4px 10px; border-radius: 99px; white-space: nowrap; }
+
+main { padding: 18px 24px 40px; max-width: 1500px; margin: 0 auto; }
+section[hidden] { display: none; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-end; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field > span { font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .6px; }
+select { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; min-width: 120px; }
+.seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+.seg button { border: 0; background: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; color: var(--text-secondary); white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: #3a3a36; color: var(--text-primary); }
+.stepper { display: inline-flex; gap: 4px; }
+.iconbtn { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; width: 34px; cursor: pointer; }
+.toggle { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; color: var(--text-secondary); padding: 6px 0; }
+.toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+.tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; min-width: 0; }
+.tile .k { font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .6px; }
+.tile .v { font-size: 22px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.tile .s { font-size: 12px; color: var(--text-secondary); }
+
+.panels { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.panel { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; min-width: 0; }
+.panel h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.panel h3 small { font-weight: 400; color: var(--text-muted); font-size: 11.5px; }
+.view { position: relative; aspect-ratio: 1; background: #000; border-radius: 6px; overflow: hidden; cursor: crosshair; }
+.view img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none; }
+.view img.over { mix-blend-mode: screen; }
+.view svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.box { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.box.hl { stroke: #fff; stroke-width: 2.5; }
+.xh { stroke: rgba(255,255,255,.55); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 3 3; }
+.cbar { margin-top: 8px; display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); }
+.cbar i { flex: 1; height: 8px; border-radius: 4px; background: var(--inferno); }
+.cbar.gray i { background: linear-gradient(90deg, #000, #fff); }
+.readout { font-size: 12px; color: var(--text-secondary); min-height: 18px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+
+.busy { position: absolute; inset: 0; background: rgba(15,16,18,.72); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; border-radius: var(--radius); z-index: 5; color: var(--text-secondary); }
+.busy[hidden] { display: none; }
+.spinner { width: 34px; height: 34px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.lower { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 10px; margin-top: 10px; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; min-width: 0; }
+.card h2 { font-size: 14px; margin: 0 0 4px; }
+.card .sub { color: var(--text-muted); font-size: 12.5px; margin: 0 0 10px; }
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--text-muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 7px 8px; border-bottom: 1px solid var(--grid); }
+tbody tr { cursor: default; }
+tbody tr:hover, tbody tr.hl { background: var(--surface-2); }
+td.num, th.num { text-align: right; }
+.ratio { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.ratio b { font-weight: 500; min-width: 3.4em; text-align: right; }
+.ratio i { display: inline-block; height: 6px; border-radius: 3px; background: var(--text-muted); }
+.ratio i.hi { background: var(--text-primary); }
+.empty { color: var(--text-muted); padding: 10px 0; }
+
+.masks canvas { width: 100%; height: auto; display: block; image-rendering: pixelated; border-radius: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--text-secondary); margin-top: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+/* study tab */
+.study-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 10px; margin-top: 14px; }
+.chart { position: relative; }
+.chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.chart .axis text { fill: var(--text-muted); font-size: 11px; }
+.chart .gridline { stroke: var(--grid); }
+.chart .refline { stroke: var(--text-muted); stroke-dasharray: 4 4; }
+.chart .dot { stroke: var(--surface-1); stroke-width: 2; cursor: pointer; }
+.chart .dot:hover { stroke: var(--text-primary); }
+.chart .lbl { fill: var(--text-secondary); font-size: 12px; }
+.tip { position: absolute; pointer-events: none; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; color: var(--text-primary); box-shadow: 0 6px 20px rgba(0,0,0,.4); max-width: 260px; z-index: 10; }
+.tip[hidden] { display: none; }
+.tip .t { color: var(--text-muted); font-size: 11.5px; }
+.linkbtn { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline; font-size: 12.5px; }
+
+.how { max-width: 860px; }
+.how ol { padding-left: 20px; }
+.how li { margin: 8px 0; color: var(--text-secondary); }
+.how li b { color: var(--text-primary); }
+.note { border-left: 3px solid var(--accent); padding: 8px 12px; background: var(--surface-1); border-radius: 0 8px 8px 0; color: var(--text-secondary); }
+.err { color: #e66767; }
+
+/* simple view */
+.modebtn { background: none; border: 1px solid var(--border); color: var(--text-secondary); border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 12.5px; }
+body.simple nav, body.simple .chip { display: none; }
+body.simple .modebtn { margin-left: auto; }
+.lead { font-size: 19px; line-height: 1.5; max-width: 900px; margin: 6px auto 20px; text-align: center; color: var(--text-secondary); }
+.lead b { color: var(--text-primary); }
+.s-controls { display: flex; justify-content: center; align-items: center; gap: 18px 28px; flex-wrap: wrap; margin-bottom: 18px; }
+.seg.big button { padding: 9px 16px; font-size: 15px; }
+.s-step { display: inline-flex; align-items: center; gap: 10px; font-size: 15px; color: var(--text-secondary); }
+.s-step .iconbtn { height: 40px; width: 40px; font-size: 20px; }
+.s-panels { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; max-width: 1250px; margin: 0 auto; }
+.s-panel { margin: 0; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; min-width: 0; }
+.s-panel figcaption { padding: 10px 4px 2px; display: flex; flex-direction: column; gap: 2px; }
+.s-panel figcaption b { font-size: 16px; }
+.s-panel figcaption span { color: var(--text-muted); font-size: 13.5px; }
+.s-verdict { text-align: center; font-size: 20px; margin: 22px auto 6px; max-width: 900px; }
+.s-verdict b { color: #f7d13d; }
+.s-key { text-align: center; color: var(--text-muted); font-size: 13.5px; display: flex; gap: 8px; justify-content: center; align-items: center; }
+.s-key .sq { width: 12px; height: 12px; border: 2px solid var(--accent); display: inline-block; border-radius: 2px; }
+@media (max-width: 800px) { .s-panels { grid-template-columns: minmax(0, 1fr); max-width: 460px; } .lead { font-size: 16px; } }
+
+@media (max-width: 1100px) {
+  .panels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .lower, .study-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  header, main { padding-left: 16px; padding-right: 16px; }
+  .panels { grid-template-columns: minmax(0, 1fr); }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  nav { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+      <circle cx="15" cy="15" r="13" fill="none" stroke="#5ee0ff" stroke-width="2"/>
+      <path d="M8 15h3l2-5 4 10 2-5h3" fill="none" stroke="#f0efec" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div>
+      <h1>Radio Silence</h1>
+      <p>Where is the AI MRI reconstruction guessing?</p>
+    </div>
+  </div>
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-tab="explore">Explore a slice</button>
+    <button role="tab" aria-selected="false" data-tab="study">Study results</button>
+    <button role="tab" aria-selected="false" data-tab="how">How it works</button>
+  </nav>
+  <span class="chip" id="device">connecting…</span>
+  <button class="modebtn" id="modeBtn">Full research view</button>
+</header>
+
+<main>
+<!-- ============================================================ SIMPLE -->
+<div id="simple">
+  <p class="lead" id="sLead"></p>
+  <div class="s-controls">
+    <div class="seg big" id="sPatient"></div>
+    <div class="s-step">
+      <button class="iconbtn" id="sPrev" aria-label="Previous image">‹</button>
+      <span id="sPos"></span>
+      <button class="iconbtn" id="sNext" aria-label="Next image">›</button>
+    </div>
+    <div class="seg big" id="sSpeed"><button data-v="4" aria-pressed="true">4× faster scan</button><button data-v="8" aria-pressed="false">8× faster scan</button></div>
+  </div>
+  <div class="s-panels">
+    <div class="busy" id="sBusy" hidden><div class="spinner"></div><div>The AI is working… (about 10 seconds)</div></div>
+    <figure class="s-panel"><div class="view" data-k="s-gt"><img alt="Real scan"><svg viewBox="0 0 320 320" preserveAspectRatio="none"></svg></div>
+      <figcaption><b>1. Real scan</b><span>All the data, the slow way</span></figcaption></figure>
+    <figure class="s-panel"><div class="view" data-k="s-rec"><img alt="AI image"><svg viewBox="0 0 320 320" preserveAspectRatio="none"></svg></div>
+      <figcaption><b>2. AI's version</b><span id="sRecSub"></span></figcaption></figure>
+    <figure class="s-panel"><div class="view" data-k="s-trust"><img class="base" alt=""><img class="map over" alt="Where the AI is guessing"><svg viewBox="0 0 320 320" preserveAspectRatio="none"></svg></div>
+      <figcaption><b>3. Where the AI is guessing</b><span>Bright yellow = the AI is unsure</span></figcaption></figure>
+  </div>
+  <p class="s-verdict" id="sVerdict"></p>
+  <p class="s-key"><i class="sq"></i> Blue squares = lesions marked by a radiologist</p>
+</div>
+
+<div id="full" hidden>
+<!-- ============================================================ EXPLORE -->
+<section id="tab-explore">
+  <div class="controls">
+    <label class="field"><span>Scan</span><select id="file"></select></label>
+    <div class="field"><span>Slice</span>
+      <div class="stepper">
+        <button class="iconbtn" id="prev" aria-label="Previous slice">‹</button>
+        <select id="slice"></select>
+        <button class="iconbtn" id="next" aria-label="Next slice">›</button>
+      </div>
+    </div>
+    <div class="field"><span>Acceleration</span>
+      <div class="seg" id="accel"><button data-v="4" aria-pressed="true">4×</button><button data-v="8" aria-pressed="false">8×</button></div>
+    </div>
+    <div class="field"><span>Trust map method</span>
+      <div class="seg" id="method">
+        <button data-v="a" aria-pressed="true" title="10 rebuilds, each with the equispaced mask shifted">A · shifted masks</button>
+        <button data-v="b" aria-pressed="false" title="10 rebuilds, each randomly dropping ~5% of the acquired outer lines">B · dropped lines</button>
+      </div>
+    </div>
+    <div class="field"><span>Display</span>
+      <div style="display:flex; gap:16px; flex-wrap:wrap">
+        <label class="toggle"><input type="checkbox" id="showBoxes" checked> Lesion boxes</label>
+        <label class="toggle"><input type="checkbox" id="overlay"> Maps over anatomy</label>
+        <label class="toggle"><input type="checkbox" id="showZf"> Show zero-filled input</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="panels" id="panels">
+    <div class="busy" id="busy" hidden><div class="spinner"></div><div id="busyText">Running VarNet on the GPU…</div></div>
+    <div class="panel"><h3>Ground truth <small>fully sampled</small></h3>
+      <div class="view" data-k="gt"><img alt="Ground truth image"><svg viewBox="0 0 320 320" preserveAspectRatio="none"></svg></div>
+      <div class="cbar gray"><span>0</span><i></i><span>max</span></div></div>
+    <div class="panel"><h3><span id="recTitle">AI reconstruction</span> <small id="recSub"></small></h3>
+      <div class="view" data-k="rec"><img alt="Reconstruction"><svg viewBox="0 0 320 320" preserveAspectRatio="none"></svg></div>
+      <div class="cbar gray"><span>0</span><i></i><span>max</span></div></div>
+    <div class="panel"><h3>Error <small>|recon − truth|</small></h3>
+      <div class="view" data-k="err"><img class="base" alt="" hidden><img class="map" alt="Error map"><svg viewBox="0 0 320 320" preserveAspectRatio="none"></svg></div>
+      <div class="cbar"><span>0</span><i></i><span id="errMax">high</span></div></div>
+    <div class="panel"><h3>Trust map <small id="trustSub">std over rebuilds</small></h3>
+      <div class="view" data-k="trust"><img class="base" alt="" hidden><img class="map" alt="Trust map"><svg viewBox="0 0 320 320" preserveAspectRatio="none"></svg></div>
+      <div class="cbar"><span>stable</span><i></i><span>guessing</span></div></div>
+  </div>
+  <div class="readout" id="readout">Hover an image to read trust and error at that pixel.</div>
+
+  <div class="lower">
+    <div class="card">
+      <h2>Lesion boxes on this slice</h2>
+      <p class="sub">fastMRI+ annotations. Values are the box mean relative to this slice's brain average (1.0× = average).</p>
+      <div class="tablewrap"><table id="boxTable"></table></div>
+    </div>
+    <div class="card masks">
+      <h2>Which k-space lines the model saw</h2>
+      <p class="sub" id="maskSub"></p>
+      <canvas id="maskCanvas" width="320" height="100"></canvas>
+      <div class="legend">
+        <span><i class="sw" style="background:#f0efec"></i>acquired</span>
+        <span><i class="sw" style="background:#5ee0ff"></i>center (always kept)</span>
+        <span><i class="sw" style="background:#3a3a36"></i>skipped</span>
+        <span><i class="sw" style="background:#181817; outline:1px solid #33332f"></i>not in scan (padding)</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ STUDY -->
+<section id="tab-study" hidden>
+  <div id="studyMissing" class="note" hidden>
+    No batch results yet. Run <code>python trustmap.py --accel 4 8</code> once, then reload this tab.
+  </div>
+  <div id="studyBody" hidden>
+    <div class="card">
+      <h2>Does the trust map light up where the reconstruction is wrong?</h2>
+      <p class="sub">Spearman correlation between trust and error. Pixel level: inside the brain, averaged over slices. Box level: across all fastMRI+ boxes, with each box relative to its slice's brain average.</p>
+      <div class="tablewrap"><table id="summaryTable"></table></div>
+    </div>
+    <div class="study-grid">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start">
+          <div>
+            <h2>Every lesion box: trust vs error</h2>
+            <p class="sub">Both axes relative to the slice's brain average. Up and to the right means the box is both more wrong and flagged as less trustworthy. Click a point to open that slice.</p>
+          </div>
+          <div class="seg" id="studyMethod"><button data-v="A" aria-pressed="true">A · shifted masks</button><button data-v="B" aria-pressed="false">B · dropped lines</button></div>
+        </div>
+        <div class="chart" id="scatter"></div>
+        <div class="legend">
+          <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#3987e5"/></svg>4× acceleration</span>
+          <span><svg width="12" height="12"><rect x="1" y="1" width="10" height="10" rx="2" fill="#d95926"/></svg>8× acceleration</span>
+          <span><svg width="22" height="12"><line x1="0" y1="6" x2="22" y2="6" stroke="#8f8e86" stroke-dasharray="4 4"/></svg>slice average (1.0×)</span>
+          <button class="linkbtn" id="toggleTable">Show as table</button>
+        </div>
+        <div class="tablewrap" id="scatterTableWrap" hidden><table id="scatterTable"></table></div>
+      </div>
+      <div class="card">
+        <h2>Reconstruction quality</h2>
+        <p class="sub">Mean over the annotated slices. Zero-filled = the undersampled data with no AI, shown for reference.</p>
+        <div class="tablewrap"><table id="qualityTable"></table></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ HOW -->
+<section id="tab-how" hidden>
+  <div class="card how">
+    <h2>How the trust map is made</h2>
+    <ol>
+      <li><b>Start from a full scan.</b> The fully sampled k-space gives the ground-truth image (root-sum-of-squares over the 20 coils, cropped to 320×320).</li>
+      <li><b>Throw most of it away.</b> Keep only every 4th (or 8th) line of k-space plus the center, as a 4× or 8× faster scan would.</li>
+      <li><b>Let the AI fill in the gaps.</b> A pretrained end-to-end VarNet (fastMRI brain leaderboard model, no retraining) reconstructs the image.</li>
+      <li><b>Ask it again, slightly differently, 10 times.</b>
+        <br>A: shift which lines are kept (same acceleration).
+        <br>B: keep the same lines but randomly drop ~5% of the outer ones.
+        <br>Where the 10 answers disagree, the model is guessing. The pixel-wise standard deviation is the <b>trust map</b> (bright = low trust).</li>
+      <li><b>Check it against reality.</b> The error map is |reconstruction − ground truth|. Radiologist lesion boxes from fastMRI+ show whether the guessing happens where the clinically important tissue is.</li>
+    </ol>
+    <p class="note">In a real accelerated scan there is no ground truth, so the error map can't be computed. The trust map can, because it only needs the undersampled data and the model. This is a research prototype, not a diagnostic tool.</p>
+  </div>
+</section>
+</div>
+</main>
+
+<div class="tip" id="tip" hidden></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const state = { files: [], file: null, slice: 0, accel: 4, method: "a", data: null, pixels: null, hlBox: null, study: null, studyMethod: "A" };
+const fmt = (v, d = 2) => v == null ? "–" : Number(v).toFixed(d);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// ------------------------------------------------------------------ tabs
+$$("nav button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+function showTab(t) {
+  $$("nav button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
+  ["explore", "study", "how"].forEach(k => $("#tab-" + k).hidden = k !== t);
+  if (t === "study") loadStudy();
+}
+
+// ------------------------------------------------------------------ segmented controls
+function seg(el, onChange) {
+  el.querySelectorAll("button").forEach(b => b.onclick = () => {
+    el.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    onChange(b.dataset.v);
+  });
+}
+function setSeg(el, v) { el.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.dataset.v == v)); }
+seg($("#accel"), v => { state.accel = +v; run(); });
+seg($("#method"), v => { state.method = v; render(); });
+["#showBoxes", "#overlay", "#showZf"].forEach(s => $(s).onchange = render);
+
+// ------------------------------------------------------------------ files & slices
+async function init() {
+  const r = await fetch("/api/files").then(r => r.json());
+  state.files = r.files;
+  $("#device").textContent = "GPU: " + r.device;
+  $("#file").innerHTML = r.files.map(f => `<option value="${esc(f.file)}">${esc(f.file.replace("file_brain_", ""))} · ${f.n_boxes} boxes</option>`).join("");
+  $("#file").onchange = () => { state.file = $("#file").value; fillSlices(true); run(); };
+  $("#slice").onchange = () => { state.slice = +$("#slice").value; run(); };
+  $("#prev").onclick = () => step(-1);
+  $("#next").onclick = () => step(1);
+  document.addEventListener("keydown", e => {
+    if (["SELECT", "INPUT"].includes(document.activeElement.tagName)) return;
+    if (simple) {
+      if (e.key === "ArrowLeft") sStep(-1);
+      if (e.key === "ArrowRight") sStep(1);
+      return;
+    }
+    if ($("#tab-explore").hidden) return;
+    if (e.key === "ArrowLeft") step(-1);
+    if (e.key === "ArrowRight") step(1);
+  });
+  state.file = r.files[0].file;
+  fillSlices(true);
+  setupSimple();
+  applyMode();
+  run();
+}
+function cur() { return state.files.find(f => f.file === state.file); }
+function fillSlices(pickFirstAnnotated) {
+  const f = cur();
+  const opts = [];
+  for (let i = 0; i < f.n_slices; i++) {
+    const n = f.boxes_per_slice[i] || 0;
+    opts.push(`<option value="${i}">${i}${n ? `  ★ ${n} box${n > 1 ? "es" : ""}` : ""}</option>`);
+  }
+  $("#slice").innerHTML = opts.join("");
+  if (pickFirstAnnotated) {
+    const ann = Object.keys(f.boxes_per_slice).map(Number).sort((a, b) => a - b);
+    state.slice = ann.length ? ann[0] : 0;
+  }
+  $("#slice").value = state.slice;
+}
+function step(d) {
+  const n = cur().n_slices;
+  const s = Math.min(n - 1, Math.max(0, state.slice + d));
+  if (s !== state.slice) { state.slice = s; $("#slice").value = s; run(); }
+}
+
+// ------------------------------------------------------------------ run
+let runId = 0;
+async function run() {
+  const id = ++runId;
+  const q = new URLSearchParams({ file: state.file, slice: state.slice, accel: state.accel });
+  const t = setTimeout(() => { $("#busy").hidden = false; $("#sBusy").hidden = false; }, 120);
+  $("#busyText").textContent = `Running VarNet 21× on slice ${state.slice} (${state.accel}×)…`;
+  try {
+    const r = await fetch("/api/slice?" + q);
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    if (id !== runId) return;
+    state.data = d;
+    state.pixels = {};
+    for (const k of ["err", "trust_a", "trust_b"]) state.pixels[k] = decodeF16(d.pixels[k]);
+    state.hlBox = null;
+    render();
+  } catch (e) {
+    if (id === runId) $("#tiles").innerHTML = `<div class="tile err" style="grid-column:1/-1">Failed: ${esc(e.message).slice(0, 300)}</div>`;
+  } finally {
+    clearTimeout(t);
+    if (id === runId) { $("#busy").hidden = true; $("#sBusy").hidden = true; }
+  }
+}
+
+function decodeF16(b64) {
+  const bin = atob(b64), n = bin.length / 2, out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const h = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
+    const s = h & 0x8000 ? -1 : 1, e = (h >> 10) & 0x1f, f = h & 0x3ff;
+    out[i] = e === 0 ? s * 2 ** -14 * (f / 1024) : e === 31 ? (f ? NaN : s * Infinity) : s * 2 ** (e - 15) * (1 + f / 1024);
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------ render
+// ------------------------------------------------------------------ simple view
+let simple = true;
+try { simple = localStorage.getItem("rs-mode") !== "full"; } catch (e) {}
+function applyMode() {
+  document.body.classList.toggle("simple", simple);
+  $("#simple").hidden = !simple;
+  $("#full").hidden = simple;
+  $("#modeBtn").textContent = simple ? "Full research view" : "Back to simple view";
+  if (simple && state.method !== "a") { state.method = "a"; setSeg($("#method"), "a"); }
+  render();
+}
+$("#modeBtn").onclick = () => {
+  simple = !simple;
+  try { localStorage.setItem("rs-mode", simple ? "simple" : "full"); } catch (e) {}
+  applyMode();
+};
+function annSlices() { return Object.keys(cur().boxes_per_slice).map(Number).sort((a, b) => a - b); }
+function setupSimple() {
+  $("#sPatient").innerHTML = state.files.map((f, i) =>
+    `<button data-v="${esc(f.file)}" aria-pressed="${f.file === state.file}">Patient ${i + 1}</button>`).join("");
+  seg($("#sPatient"), v => { state.file = v; $("#file").value = v; fillSlices(true); run(); });
+  seg($("#sSpeed"), v => { state.accel = +v; setSeg($("#accel"), v); run(); });
+  $("#sPrev").onclick = () => sStep(-1);
+  $("#sNext").onclick = () => sStep(1);
+}
+function sStep(d) {
+  const a = annSlices();
+  if (!a.length) return;
+  let i = a.indexOf(state.slice);
+  i = i < 0 ? 0 : Math.min(a.length - 1, Math.max(0, i + d));
+  if (a[i] !== state.slice) { state.slice = a[i]; $("#slice").value = a[i]; run(); }
+}
+function renderSimple() {
+  const d = state.data;
+  setSeg($("#sPatient"), state.file);
+  setSeg($("#sSpeed"), state.accel);
+  const a = annSlices(), i = a.indexOf(state.slice);
+  $("#sPos").textContent = i >= 0 ? `Image ${i + 1} of ${a.length}` : `Slice ${state.slice}`;
+  $("#sPrev").disabled = i <= 0;
+  $("#sNext").disabled = i < 0 || i >= a.length - 1;
+  const frac = state.accel === 4 ? "a quarter" : "an eighth";
+  $("#sLead").innerHTML = `The AI rebuilds a brain scan from <b>only about ${frac} of the data</b>. We ask it 10 times in slightly different ways. Where its answers change, it is <b>guessing</b>.`;
+  $(`.view[data-k="s-gt"] img`).src = d.images.gt;
+  $(`.view[data-k="s-rec"] img`).src = d.images.rec;
+  const v = $(`.view[data-k="s-trust"]`);
+  v.querySelector("img.base").src = d.images.gt;
+  v.querySelector("img.map").src = d.images.trust_a;
+  $("#sRecSub").textContent = `Made from about ${frac} of the data (${state.accel}× faster)`;
+  if (d.boxes.length) {
+    const r = d.boxes.reduce((s, b) => s + b.mean_trust_A / d.fg_means.trust_a, 0) / d.boxes.length;
+    $("#sVerdict").innerHTML = r >= 1.05
+      ? `Inside the lesions, the AI is guessing <b>${r.toFixed(1)}× more</b> than in the average part of the brain.`
+      : r <= 0.95
+        ? `On this image the AI guesses <b>less</b> inside the lesions than in the average part of the brain.`
+        : `On this image the AI guesses about as much inside the lesions as anywhere else.`;
+  } else {
+    $("#sVerdict").textContent = "";
+  }
+}
+
+function render() {
+  const d = state.data;
+  if (!d) return;
+  renderSimple();
+  const m = state.method, M = m.toUpperCase(), met = d.metrics;
+  const zf = $("#showZf").checked, overlay = $("#overlay").checked;
+
+  // tiles
+  const sp = met[`spearman_${M}_fg`];
+  const lines = d.masks.main.reduce((a, b) => a + b, 0), acq = d.masks.padding[1] - d.masks.padding[0];
+  $("#tiles").innerHTML = [
+    tile("Reconstruction PSNR", fmt(met.psnr, 1) + " dB", `zero-filled ${fmt(met.psnr_zero_filled, 1)} dB → +${fmt(met.psnr - met.psnr_zero_filled, 1)} dB from the AI`),
+    tile("SSIM", fmt(met.ssim, 3), "structural similarity to the full scan"),
+    tile(`Trust ↔ error (${M})`, "ρ = " + fmt(sp, 2), "pixel Spearman inside the brain"),
+    tile("Lines used", `${lines} / ${acq}`, `${(acq / lines).toFixed(1)}× fewer than the full scan`),
+    tile("Compute", d.cached ? "cached" : fmt(d.seconds, 1) + " s", `${1 + 2 * d.n} VarNet passes${d.fp16 ? " · fp16" : ""}`),
+  ].join("");
+
+  // images
+  setImg("gt", d.images.gt);
+  setImg("rec", zf ? d.images.zf : d.images.rec);
+  $("#recTitle").textContent = zf ? "Zero-filled input" : "AI reconstruction";
+  $("#recSub").textContent = zf ? "what the scanner gave" : `VarNet, ${d.accel}×`;
+  setMap("err", d.images.err, overlay);
+  setMap("trust", d.images["trust_" + m], overlay);
+  $("#trustSub").textContent = m === "a" ? `std over ${d.n} shifted masks` : `std over ${d.n} line drops`;
+  drawOverlays();
+
+  // box table
+  const rows = d.boxes;
+  if (!rows.length) {
+    $("#boxTable").innerHTML = `<tbody><tr><td class="empty">No fastMRI+ boxes on this slice. Slices marked ★ have boxes.</td></tr></tbody>`;
+  } else {
+    const fgT = d.fg_means["trust_" + m], fgE = d.fg_means.err;
+    const maxR = Math.max(2, ...rows.map(b => Math.max(b[`mean_trust_${M}`] / fgT, b.mean_error / fgE)));
+    $("#boxTable").innerHTML = `<thead><tr><th>Label</th><th class="num">Size</th><th class="num">Trust map (${M})</th><th class="num">Error</th></tr></thead><tbody>` +
+      rows.map((b, i) => `<tr data-i="${i}"><td>${esc(b.label)}</td><td class="num">${b.width}×${b.height}</td>
+        <td class="num">${ratio(b[`mean_trust_${M}`] / fgT, maxR)}</td><td class="num">${ratio(b.mean_error / fgE, maxR)}</td></tr>`).join("") + "</tbody>";
+    $$("#boxTable tbody tr").forEach(tr => {
+      tr.onmouseenter = () => { state.hlBox = +tr.dataset.i; drawOverlays(); };
+      tr.onmouseleave = () => { state.hlBox = null; drawOverlays(); };
+    });
+  }
+  drawMasks();
+}
+function tile(k, v, s) { return `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`; }
+function ratio(r, max) {
+  return `<span class="ratio"><i class="${r > 1 ? "hi" : ""}" style="width:${Math.min(60, 60 * r / max).toFixed(0)}px"></i><b>${r.toFixed(2)}×</b></span>`;
+}
+function setImg(k, src) { $(`.view[data-k="${k}"] img`).src = src; }
+function setMap(k, src, overlay) {
+  const v = $(`.view[data-k="${k}"]`), base = v.querySelector("img.base"), map = v.querySelector("img.map");
+  base.hidden = !overlay; base.src = state.data.images.gt;
+  map.classList.toggle("over", overlay); map.src = src;
+}
+
+let cursor = null;
+function drawOverlays() {
+  const d = state.data, show = $("#showBoxes").checked;
+  $$(".view svg").forEach(svg => {
+    let s = "";
+    if (show && d) d.boxes.forEach((b, i) => {
+      s += `<rect class="box${state.hlBox === i ? " hl" : ""}" x="${b.x}" y="${b.y}" width="${b.width}" height="${b.height}"><title>${esc(b.label)}</title></rect>`;
+    });
+    if (cursor) s += `<line class="xh" x1="${cursor.x + .5}" y1="0" x2="${cursor.x + .5}" y2="320"/><line class="xh" x1="0" y1="${cursor.y + .5}" x2="320" y2="${cursor.y + .5}"/>`;
+    svg.innerHTML = s;
+  });
+}
+$$(".view").forEach(v => {
+  v.onmousemove = e => {
+    const r = v.getBoundingClientRect(), d = state.data;
+    if (!d || simple) return;
+    const [H, W] = d.shape;
+    const x = Math.floor((e.clientX - r.left) / r.width * W), y = Math.floor((e.clientY - r.top) / r.height * H);
+    if (x < 0 || y < 0 || x >= W || y >= H) return;
+    cursor = { x, y };
+    const i = y * W + x, p = state.pixels, m = state.method;
+    const inBox = d.boxes.findIndex(b => x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height);
+    $("#readout").innerHTML = `pixel (${x}, ${y}) · trust map ${m.toUpperCase()}: <b>${p["trust_" + m][i].toFixed(2)}×</b> brain avg · error: <b>${p.err[i].toFixed(2)}×</b> brain avg` +
+      (inBox >= 0 ? ` · inside box: <b>${esc(d.boxes[inBox].label)}</b>` : "");
+    drawOverlays();
+  };
+  v.onmouseleave = () => { cursor = null; drawOverlays(); };
+});
+
+// ------------------------------------------------------------------ k-space masks
+function drawMasks() {
+  const d = state.data, m = d.masks, W = m.width, set = state.method === "a" ? m.a : m.b;
+  const rows = [m.main, null, ...set], rowH = 6, gap = 2, H = rows.length * (rowH + gap);
+  const c = $("#maskCanvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  g.fillStyle = "#1a1a19"; g.fillRect(0, 0, W, H);
+  rows.forEach((row, r) => {
+    if (!row) return;
+    const y = r * (rowH + gap);
+    for (let x = 0; x < W; x++) {
+      const pad = x < m.padding[0] || x >= m.padding[1], center = x >= m.center[0] && x < m.center[1];
+      g.fillStyle = pad ? "#181817" : row[x] ? (center ? "#5ee0ff" : "#f0efec") : "#3a3a36";
+      g.fillRect(x, y, 1, rowH);
+    }
+  });
+  const extra = state.method === "a"
+    ? `Rows below: the ${d.n} shifted masks for trust map A (${d.unique_a} distinct).`
+    : `Rows below: the ${d.n} masks for trust map B, each dropping ${d.n_drop} of ${d.n_outer} outer lines.`;
+  $("#maskSub").textContent = `Top row: the mask used for the reconstruction (${d.accel}×, k-space columns left to right). ${extra}`;
+}
+
+// ------------------------------------------------------------------ study tab
+async function loadStudy() {
+  if (state.study) return;
+  const r = await fetch("/api/study").then(r => r.json());
+  if (!r.available) { $("#studyMissing").hidden = false; return; }
+  state.study = r;
+  $("#studyBody").hidden = false;
+  const S = r.summary;
+  $("#summaryTable").innerHTML = `<thead><tr><th>Acceleration</th><th>Trust map</th><th class="num">Pixel ρ, brain (mean)</th><th class="num">range over slices</th><th class="num">Box-level ρ</th><th class="num">Boxes</th><th class="num">Slices</th></tr></thead><tbody>` +
+    S.map(s => `<tr><td>${s.accel}×</td><td>${s.option === "A" ? "A · shifted masks" : "B · dropped lines"}</td><td class="num"><b>${fmt(s.pixel_spearman_fg_mean)}</b></td>
+    <td class="num">${fmt(s.pixel_spearman_fg_min)} to ${fmt(s.pixel_spearman_fg_max)}</td><td class="num"><b>${fmt(s.box_spearman_rel)}</b></td><td class="num">${s.n_boxes}</td><td class="num">${s.n_slices}</td></tr>`).join("") + "</tbody>";
+  const Q = S.filter(s => s.option === "A");
+  $("#qualityTable").innerHTML = `<thead><tr><th>Acceleration</th><th class="num">PSNR</th><th class="num">Zero-filled</th><th class="num">SSIM</th></tr></thead><tbody>` +
+    Q.map(s => `<tr><td>${s.accel}×</td><td class="num">${fmt(s.psnr_mean, 1)} dB</td><td class="num">${fmt(s.psnr_zf_mean, 1)} dB</td><td class="num">${fmt(s.ssim_mean, 3)}</td></tr>`).join("") + "</tbody>";
+  seg($("#studyMethod"), v => { state.studyMethod = v; drawScatter(); });
+  $("#toggleTable").onclick = () => {
+    const w = $("#scatterTableWrap"); w.hidden = !w.hidden;
+    $("#toggleTable").textContent = w.hidden ? "Show as table" : "Hide table";
+  };
+  drawScatter();
+  window.addEventListener("resize", () => !$("#tab-study").hidden && drawScatter());
+}
+
+function niceTicks(lo, hi, n = 5) {
+  const span = hi - lo, step0 = span / n, mag = 10 ** Math.floor(Math.log10(step0));
+  const step = [1, 2, 2.5, 5, 10].map(s => s * mag).find(s => span / s <= n) || mag * 10;
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(6));
+  return out;
+}
+
+function drawScatter() {
+  const M = state.studyMethod, pts = state.study.boxes.map(b => ({
+    ...b, tx: b[`mean_trust_${M}`] / b[`fg_mean_trust_${M}`], ey: b.mean_error / b.fg_mean_error,
+  })).filter(p => isFinite(p.tx) && isFinite(p.ey));
+  const host = $("#scatter"), Wpx = Math.max(300, host.clientWidth), H = Math.round(Math.min(460, Wpx * 0.72));
+  const pad = { l: 52, r: 16, t: 12, b: 44 };
+  const xmax = Math.max(1.5, ...pts.map(p => p.tx)) * 1.06, ymax = Math.max(1.5, ...pts.map(p => p.ey)) * 1.06;
+  const X = v => pad.l + v / xmax * (Wpx - pad.l - pad.r), Y = v => H - pad.b - v / ymax * (H - pad.t - pad.b);
+  let s = `<svg viewBox="0 0 ${Wpx} ${H}" role="img" aria-label="Scatter of box trust versus box error">`;
+  const xt = niceTicks(0, xmax), yt = niceTicks(0, ymax);
+  s += `<g class="axis">`;
+  xt.forEach(v => s += `<line class="gridline" x1="${X(v)}" x2="${X(v)}" y1="${pad.t}" y2="${H - pad.b}"/><text x="${X(v)}" y="${H - pad.b + 16}" text-anchor="middle">${v}×</text>`);
+  yt.forEach(v => s += `<line class="gridline" x1="${pad.l}" x2="${Wpx - pad.r}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${pad.l - 8}" y="${Y(v) + 4}" text-anchor="end">${v}×</text>`);
+  s += `<text x="${(pad.l + Wpx - pad.r) / 2}" y="${H - 6}" text-anchor="middle">trust map value in box (× slice brain average) → less trustworthy</text>`;
+  s += `<text transform="translate(14 ${(pad.t + H - pad.b) / 2}) rotate(-90)" text-anchor="middle">error in box (× slice average)</text></g>`;
+  s += `<line class="refline" x1="${X(1)}" x2="${X(1)}" y1="${pad.t}" y2="${H - pad.b}"/><line class="refline" x1="${pad.l}" x2="${Wpx - pad.r}" y1="${Y(1)}" y2="${Y(1)}"/>`;
+  pts.forEach((p, i) => {
+    const cx = X(p.tx), cy = Y(p.ey);
+    s += p.accel === 4
+      ? `<circle class="dot" data-i="${i}" cx="${cx}" cy="${cy}" r="5" fill="var(--series-1)"/>`
+      : `<rect class="dot" data-i="${i}" x="${cx - 5}" y="${cy - 5}" width="10" height="10" rx="2" fill="var(--series-2)"/>`;
+  });
+  s += `</svg>`;
+  host.innerHTML = s;
+  const tip = $("#tip");
+  host.querySelectorAll(".dot").forEach(el => {
+    const p = pts[+el.dataset.i];
+    el.onmousemove = e => {
+      tip.hidden = false;
+      tip.innerHTML = `<div><b>${esc(p.label)}</b></div><div class="t">${esc(p.file.replace("file_brain_", ""))} · slice ${p.slice} · ${p.accel}× · ${p.width}×${p.height}px</div>
+        <div>trust ${p.tx.toFixed(2)}× · error ${p.ey.toFixed(2)}×</div><div class="t">click to open</div>`;
+      const x = Math.min(e.clientX + 14, window.innerWidth - 280);
+      tip.style.left = x + window.scrollX + "px"; tip.style.top = e.clientY + window.scrollY + 14 + "px";
+    };
+    el.onmouseleave = () => tip.hidden = true;
+    el.onclick = () => openSlice(p.file, p.slice, p.accel, M.toLowerCase());
+  });
+  $("#scatterTable").innerHTML = `<thead><tr><th>Scan</th><th class="num">Slice</th><th>Label</th><th class="num">Accel</th><th class="num">Trust ×</th><th class="num">Error ×</th></tr></thead><tbody>` +
+    pts.map(p => `<tr><td>${esc(p.file.replace("file_brain_", ""))}</td><td class="num">${p.slice}</td><td>${esc(p.label)}</td><td class="num">${p.accel}×</td><td class="num">${p.tx.toFixed(2)}</td><td class="num">${p.ey.toFixed(2)}</td></tr>`).join("") + "</tbody>";
+}
+
+function openSlice(file, slice, accel, method) {
+  $("#tip").hidden = true;
+  state.file = file; $("#file").value = file; fillSlices(false);
+  state.slice = slice; $("#slice").value = slice;
+  state.accel = accel; setSeg($("#accel"), accel);
+  state.method = method; setSeg($("#method"), method);
+  showTab("explore");
+  run();
+}
+
+init().then(() => { if (location.hash === "#study") showTab("study"); }).catch(e => { $("#device").textContent = "server not reachable"; console.error(e); });
+</script>
+</body>
+</html>
