@@ -134,7 +134,8 @@ body.simple .modebtn { margin-left: auto; }
 .seg.big button { padding: 9px 16px; font-size: 15px; }
 .s-step { display: inline-flex; align-items: center; gap: 10px; font-size: 15px; color: var(--text-secondary); }
 .s-step .iconbtn { height: 40px; width: 40px; font-size: 20px; }
-.s-panels { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; max-width: 1250px; margin: 0 auto; }
+.s-panels { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; max-width: 1500px; margin: 0 auto; }
+@media (max-width: 1100px) { .s-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 900px; } }
 .s-panel { margin: 0; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; min-width: 0; }
 .s-panel figcaption { padding: 10px 4px 2px; display: flex; flex-direction: column; gap: 2px; }
 .s-panel figcaption b { font-size: 16px; }
@@ -196,10 +197,12 @@ body.simple .modebtn { margin-left: auto; }
     <div class="busy" id="sBusy" hidden><div class="spinner"></div><div>The AI is working… (about 10 seconds)</div></div>
     <figure class="s-panel"><div class="view" data-k="s-gt"><img alt="Real scan"><svg viewBox="0 0 320 320" preserveAspectRatio="none"></svg></div>
       <figcaption><b>1. Real scan</b><span>All the data, the slow way</span></figcaption></figure>
+    <figure class="s-panel"><div class="view" data-k="s-zf"><img alt="Fast scan without AI"><svg viewBox="0 0 320 320" preserveAspectRatio="none"></svg></div>
+      <figcaption><b>2. Fast scan, no AI</b><span id="sZfSub"></span></figcaption></figure>
     <figure class="s-panel"><div class="view" data-k="s-rec"><img alt="AI image"><svg viewBox="0 0 320 320" preserveAspectRatio="none"></svg></div>
-      <figcaption><b>2. AI's version</b><span id="sRecSub"></span></figcaption></figure>
+      <figcaption><b>3. AI's version</b><span id="sRecSub"></span></figcaption></figure>
     <figure class="s-panel"><div class="view" data-k="s-trust"><img class="base" alt=""><img class="map over" alt="Where the AI is guessing"><svg viewBox="0 0 320 320" preserveAspectRatio="none"></svg></div>
-      <figcaption><b>3. Where the AI is guessing</b><span>Bright yellow = the AI is unsure</span></figcaption></figure>
+      <figcaption><b>4. Where the AI is guessing</b><span>Bright yellow = the AI is unsure</span></figcaption></figure>
   </div>
   <p class="s-verdict" id="sVerdict"></p>
   <p class="s-key"><i class="sq"></i> Blue squares = lesions marked by a radiologist</p>
@@ -488,6 +491,8 @@ function renderSimple() {
   const frac = state.accel === 4 ? "a quarter" : "an eighth";
   $("#sLead").innerHTML = `The AI rebuilds a brain scan from <b>only about ${frac} of the data</b>. We ask it 10 times in slightly different ways. Where its answers change, it is <b>guessing</b>.`;
   $(`.view[data-k="s-gt"] img`).src = d.images.gt;
+  $(`.view[data-k="s-zf"] img`).src = d.images.zf;
+  $("#sZfSub").textContent = `What the scanner gives with about ${frac} of the data`;
   $(`.view[data-k="s-rec"] img`).src = d.images.rec;
   const v = $(`.view[data-k="s-trust"]`);
   v.querySelector("img.base").src = d.images.gt;
