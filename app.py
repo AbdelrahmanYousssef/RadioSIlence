@@ -115,29 +115,26 @@ def run_slice():
     gt = r["gt"]
     gmax = float(np.percentile(gt, 99.8))
     emax = float(np.percentile(r["err"], 99.5))
-    ta = float(np.percentile(r["trust_a"], 99.5))
-    tb = float(np.percentile(r["trust_b"], 99.5))
-    fg = gt > 0.05 * gt.max()  # same brain mask as trustmap.compute_slice
-    fg_e, fg_a, fg_b = (float(r[k][fg].mean()) for k in ("err", "trust_a", "trust_b"))
+    tmax = float(np.percentile(r["trust"], 99.5))
+    fg = r["fg"]  # brain mask from trustmap.compute_slice
+    fg_e, fg_t = float(r["err"][fg].mean()), float(r["trust"][fg].mean())
     res = dict(
         file=stem, slice=sl, accel=accel, n=n, drop=drop,
         shape=list(gt.shape),
         images=dict(gt=to_png(gt, gmax, "gray"), rec=to_png(r["rec"], gmax, "gray"),
                     zf=to_png(r["zf"], gmax, "gray"), err=to_png(r["err"], emax, "inferno"),
-                    trust_a=to_png(r["trust_a"], ta, "inferno"), trust_b=to_png(r["trust_b"], tb, "inferno")),
-        scales=dict(err=emax, trust_a=ta, trust_b=tb),
+                    trust=to_png(r["trust"], tmax, "inferno")),
+        scales=dict(err=emax, trust=tmax),
         metrics={k: clean(v) for k, v in r["slice_row"].items()},
         boxes=[{k: clean(v) for k, v in b.items()} for b in r["box_rows"]],
-        fg_means=dict(err=fg_e, trust_a=fg_a, trust_b=fg_b),
+        fg_means=dict(err=fg_e, trust=fg_t),
         # float16 maps relative to the slice brain average, for the hover readout
-        pixels=dict(err=f16(r["err"] / fg_e), trust_a=f16(r["trust_a"] / fg_a),
-                    trust_b=f16(r["trust_b"] / fg_b)),
+        pixels=dict(err=f16(r["err"] / fg_e), trust=f16(r["trust"] / fg_t)),
         masks=dict(main=r["main_mask"].astype(int).tolist(),
-                   a=[m.astype(int).tolist() for m in r["masks_a"]],
-                   b=[m.astype(int).tolist() for m in r["masks_b"]],
+                   rebuilds=[m.astype(int).tolist() for m in r["masks"]],
                    center=list(r["center"]), padding=list(r["padding"]), width=r["width"]),
         n_drop=r["n_drop"], n_outer=r["n_outer"], seconds=round(r["seconds"], 2),
-        unique_a=len({m.tobytes() for m in r["masks_a"]}), fp16=STATE["recon"].amp,
+        fp16=STATE["recon"].amp,
     )
     CACHE[key] = res
     while len(CACHE) > CACHE_SIZE:
@@ -162,23 +159,24 @@ def study():
     summary = []
     for accel, g in b.groupby("accel"):
         sg = s[s.accel == accel]
-        for opt in "AB":
-            rel_t = g[f"mean_trust_{opt}"] / g[f"fg_mean_trust_{opt}"]
-            rel_e = g.mean_error / g.fg_mean_error
-            _, sp_raw = tm.corr(g[f"mean_trust_{opt}"].values, g.mean_error.values)
-            _, sp_rel = tm.corr(rel_t.values, rel_e.values)
-            summary.append(dict(
-                accel=int(accel), option=opt, n_boxes=int(len(g)), n_slices=int(len(sg)),
-                pixel_spearman_fg_mean=clean(sg[f"spearman_{opt}_fg"].mean()),
-                pixel_spearman_fg_min=clean(sg[f"spearman_{opt}_fg"].min()),
-                pixel_spearman_fg_max=clean(sg[f"spearman_{opt}_fg"].max()),
-                box_spearman_raw=clean(sp_raw), box_spearman_rel=clean(sp_rel),
-                psnr_mean=clean(sg.psnr.mean()), ssim_mean=clean(sg.ssim.mean()),
-                psnr_zf_mean=clean(sg.psnr_zero_filled.mean()),
-            ))
+        if "mean_trust" not in g:  # results from an older version of trustmap.py
+            return jsonify(available=False)
+        rel_t = g.mean_trust / g.fg_mean_trust
+        rel_e = g.mean_error / g.fg_mean_error
+        _, sp_raw = tm.corr(g.mean_trust.values, g.mean_error.values)
+        _, sp_rel = tm.corr(rel_t.values, rel_e.values)
+        summary.append(dict(
+            accel=int(accel), n_boxes=int(len(g)), n_slices=int(len(sg)),
+            pixel_spearman_fg_mean=clean(sg.spearman_fg.mean()),
+            pixel_spearman_fg_min=clean(sg.spearman_fg.min()),
+            pixel_spearman_fg_max=clean(sg.spearman_fg.max()),
+            box_spearman_raw=clean(sp_raw), box_spearman_rel=clean(sp_rel),
+            boxes_above_avg=clean((rel_t > 1).mean()), box_trust_median=clean(rel_t.median()),
+            psnr_mean=clean(sg.psnr.mean()), ssim_mean=clean(sg.ssim.mean()),
+            psnr_zf_mean=clean(sg.psnr_zero_filled.mean()),
+        ))
     rows = b[["file", "slice", "label", "accel", "x", "y", "width", "height",
-              "mean_trust_A", "mean_trust_B", "mean_error",
-              "fg_mean_trust_A", "fg_mean_trust_B", "fg_mean_error"]]
+              "mean_trust", "mean_error", "fg_mean_trust", "fg_mean_error"]]
     rows = [{k: clean(v) for k, v in r.items()} for r in rows.to_dict("records")]
     return jsonify(available=True, summary=summary, boxes=rows)
 

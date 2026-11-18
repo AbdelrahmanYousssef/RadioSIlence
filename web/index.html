@@ -194,7 +194,7 @@ body.simple .modebtn { margin-left: auto; }
     <div class="seg big" id="sSpeed"><button data-v="4" aria-pressed="true">4× faster scan</button><button data-v="8" aria-pressed="false">8× faster scan</button></div>
   </div>
   <div class="s-panels">
-    <div class="busy" id="sBusy" hidden><div class="spinner"></div><div>The AI is working… (about 10 seconds)</div></div>
+    <div class="busy" id="sBusy" hidden><div class="spinner"></div><div>The AI is working… (a few seconds)</div></div>
     <figure class="s-panel"><div class="view" data-k="s-gt"><img alt="Real scan"><svg viewBox="0 0 320 320" preserveAspectRatio="none"></svg></div>
       <figcaption><b>1. Real scan</b><span>All the data, the slow way</span></figcaption></figure>
     <figure class="s-panel"><div class="view" data-k="s-zf"><img alt="Fast scan without AI"><svg viewBox="0 0 320 320" preserveAspectRatio="none"></svg></div>
@@ -222,12 +222,6 @@ body.simple .modebtn { margin-left: auto; }
     </div>
     <div class="field"><span>Acceleration</span>
       <div class="seg" id="accel"><button data-v="4" aria-pressed="true">4×</button><button data-v="8" aria-pressed="false">8×</button></div>
-    </div>
-    <div class="field"><span>Trust map method</span>
-      <div class="seg" id="method">
-        <button data-v="a" aria-pressed="true" title="10 rebuilds, each with the equispaced mask shifted">A · shifted masks</button>
-        <button data-v="b" aria-pressed="false" title="10 rebuilds, each randomly dropping ~5% of the acquired outer lines">B · dropped lines</button>
-      </div>
     </div>
     <div class="field"><span>Display</span>
       <div style="display:flex; gap:16px; flex-wrap:wrap">
@@ -295,7 +289,6 @@ body.simple .modebtn { margin-left: auto; }
             <h2>Every lesion box: trust vs error</h2>
             <p class="sub">Both axes relative to the slice's brain average. Up and to the right means the box is both more wrong and flagged as less trustworthy. Click a point to open that slice.</p>
           </div>
-          <div class="seg" id="studyMethod"><button data-v="A" aria-pressed="true">A · shifted masks</button><button data-v="B" aria-pressed="false">B · dropped lines</button></div>
         </div>
         <div class="chart" id="scatter"></div>
         <div class="legend">
@@ -324,8 +317,8 @@ body.simple .modebtn { margin-left: auto; }
       <li><b>Throw most of it away.</b> Keep only every 4th (or 8th) line of k-space plus the center, as a 4× or 8× faster scan would.</li>
       <li><b>Let the AI fill in the gaps.</b> A pretrained end-to-end VarNet (fastMRI brain leaderboard model, no retraining) reconstructs the image.</li>
       <li><b>Ask it again, slightly differently, 10 times.</b>
-        <br>A: shift which lines are kept (same acceleration).
-        <br>B: keep the same lines but randomly drop ~5% of the outer ones.
+        Each time, randomly leave out ~5% of the lines that were measured (never the center ones).
+        This only uses data a real fast scan actually has.
         <br>Where the 10 answers disagree, the model is guessing. The pixel-wise standard deviation is the <b>trust map</b> (bright = low trust).</li>
       <li><b>Check it against reality.</b> The error map is |reconstruction − ground truth|. Radiologist lesion boxes from fastMRI+ show whether the guessing happens where the clinically important tissue is.</li>
     </ol>
@@ -340,7 +333,7 @@ body.simple .modebtn { margin-left: auto; }
 <script>
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
-const state = { files: [], file: null, slice: 0, accel: 4, method: "a", data: null, pixels: null, hlBox: null, study: null, studyMethod: "A" };
+const state = { files: [], file: null, slice: 0, accel: 4, data: null, pixels: null, hlBox: null, study: null };
 const fmt = (v, d = 2) => v == null ? "–" : Number(v).toFixed(d);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -361,7 +354,6 @@ function seg(el, onChange) {
 }
 function setSeg(el, v) { el.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.dataset.v == v)); }
 seg($("#accel"), v => { state.accel = +v; run(); });
-seg($("#method"), v => { state.method = v; render(); });
 ["#showBoxes", "#overlay", "#showZf"].forEach(s => $(s).onchange = render);
 
 // ------------------------------------------------------------------ files & slices
@@ -426,7 +418,7 @@ async function run() {
     if (id !== runId) return;
     state.data = d;
     state.pixels = {};
-    for (const k of ["err", "trust_a", "trust_b"]) state.pixels[k] = decodeF16(d.pixels[k]);
+    for (const k of ["err", "trust"]) state.pixels[k] = decodeF16(d.pixels[k]);
     state.hlBox = null;
     render();
   } catch (e) {
@@ -456,7 +448,6 @@ function applyMode() {
   $("#simple").hidden = !simple;
   $("#full").hidden = simple;
   $("#modeBtn").textContent = simple ? "Full research view" : "Back to simple view";
-  if (simple && state.method !== "a") { state.method = "a"; setSeg($("#method"), "a"); }
   render();
 }
 $("#modeBtn").onclick = () => {
@@ -496,10 +487,10 @@ function renderSimple() {
   $(`.view[data-k="s-rec"] img`).src = d.images.rec;
   const v = $(`.view[data-k="s-trust"]`);
   v.querySelector("img.base").src = d.images.gt;
-  v.querySelector("img.map").src = d.images.trust_a;
+  v.querySelector("img.map").src = d.images.trust;
   $("#sRecSub").textContent = `Made from about ${frac} of the data (${state.accel}× faster)`;
   if (d.boxes.length) {
-    const r = d.boxes.reduce((s, b) => s + b.mean_trust_A / d.fg_means.trust_a, 0) / d.boxes.length;
+    const r = d.boxes.reduce((s, b) => s + b.mean_trust / d.fg_means.trust, 0) / d.boxes.length;
     $("#sVerdict").innerHTML = r >= 1.05
       ? `Inside the lesions, the AI is guessing <b>${r.toFixed(1)}× more</b> than in the average part of the brain.`
       : r <= 0.95
@@ -514,18 +505,18 @@ function render() {
   const d = state.data;
   if (!d) return;
   renderSimple();
-  const m = state.method, M = m.toUpperCase(), met = d.metrics;
+  const met = d.metrics;
   const zf = $("#showZf").checked, overlay = $("#overlay").checked;
 
   // tiles
-  const sp = met[`spearman_${M}_fg`];
+  const sp = met.spearman_fg;
   const lines = d.masks.main.reduce((a, b) => a + b, 0), acq = d.masks.padding[1] - d.masks.padding[0];
   $("#tiles").innerHTML = [
     tile("Reconstruction PSNR", fmt(met.psnr, 1) + " dB", `zero-filled ${fmt(met.psnr_zero_filled, 1)} dB → +${fmt(met.psnr - met.psnr_zero_filled, 1)} dB from the AI`),
     tile("SSIM", fmt(met.ssim, 3), "structural similarity to the full scan"),
-    tile(`Trust ↔ error (${M})`, "ρ = " + fmt(sp, 2), "pixel Spearman inside the brain"),
+    tile("Trust ↔ error", "ρ = " + fmt(sp, 2), "pixel Spearman inside the brain"),
     tile("Lines used", `${lines} / ${acq}`, `${(acq / lines).toFixed(1)}× fewer than the full scan`),
-    tile("Compute", d.cached ? "cached" : fmt(d.seconds, 1) + " s", `${1 + 2 * d.n} VarNet passes${d.fp16 ? " · fp16" : ""}`),
+    tile("Compute", d.cached ? "cached" : fmt(d.seconds, 1) + " s", `${1 + d.n} VarNet passes${d.fp16 ? " · fp16" : ""}`),
   ].join("");
 
   // images
@@ -534,8 +525,8 @@ function render() {
   $("#recTitle").textContent = zf ? "Zero-filled input" : "AI reconstruction";
   $("#recSub").textContent = zf ? "what the scanner gave" : `VarNet, ${d.accel}×`;
   setMap("err", d.images.err, overlay);
-  setMap("trust", d.images["trust_" + m], overlay);
-  $("#trustSub").textContent = m === "a" ? `std over ${d.n} shifted masks` : `std over ${d.n} line drops`;
+  setMap("trust", d.images.trust, overlay);
+  $("#trustSub").textContent = `std over ${d.n} rebuilds`;
   drawOverlays();
 
   // box table
@@ -543,11 +534,11 @@ function render() {
   if (!rows.length) {
     $("#boxTable").innerHTML = `<tbody><tr><td class="empty">No fastMRI+ boxes on this slice. Slices marked ★ have boxes.</td></tr></tbody>`;
   } else {
-    const fgT = d.fg_means["trust_" + m], fgE = d.fg_means.err;
-    const maxR = Math.max(2, ...rows.map(b => Math.max(b[`mean_trust_${M}`] / fgT, b.mean_error / fgE)));
-    $("#boxTable").innerHTML = `<thead><tr><th>Label</th><th class="num">Size</th><th class="num">Trust map (${M})</th><th class="num">Error</th></tr></thead><tbody>` +
+    const fgT = d.fg_means.trust, fgE = d.fg_means.err;
+    const maxR = Math.max(2, ...rows.map(b => Math.max(b.mean_trust / fgT, b.mean_error / fgE)));
+    $("#boxTable").innerHTML = `<thead><tr><th>Label</th><th class="num">Size</th><th class="num">Trust map</th><th class="num">Error</th></tr></thead><tbody>` +
       rows.map((b, i) => `<tr data-i="${i}"><td>${esc(b.label)}</td><td class="num">${b.width}×${b.height}</td>
-        <td class="num">${ratio(b[`mean_trust_${M}`] / fgT, maxR)}</td><td class="num">${ratio(b.mean_error / fgE, maxR)}</td></tr>`).join("") + "</tbody>";
+        <td class="num">${ratio(b.mean_trust / fgT, maxR)}</td><td class="num">${ratio(b.mean_error / fgE, maxR)}</td></tr>`).join("") + "</tbody>";
     $$("#boxTable tbody tr").forEach(tr => {
       tr.onmouseenter = () => { state.hlBox = +tr.dataset.i; drawOverlays(); };
       tr.onmouseleave = () => { state.hlBox = null; drawOverlays(); };
@@ -586,9 +577,9 @@ $$(".view").forEach(v => {
     const x = Math.floor((e.clientX - r.left) / r.width * W), y = Math.floor((e.clientY - r.top) / r.height * H);
     if (x < 0 || y < 0 || x >= W || y >= H) return;
     cursor = { x, y };
-    const i = y * W + x, p = state.pixels, m = state.method;
+    const i = y * W + x, p = state.pixels;
     const inBox = d.boxes.findIndex(b => x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height);
-    $("#readout").innerHTML = `pixel (${x}, ${y}) · trust map ${m.toUpperCase()}: <b>${p["trust_" + m][i].toFixed(2)}×</b> brain avg · error: <b>${p.err[i].toFixed(2)}×</b> brain avg` +
+    $("#readout").innerHTML = `pixel (${x}, ${y}) · trust map: <b>${p.trust[i].toFixed(2)}×</b> brain avg · error: <b>${p.err[i].toFixed(2)}×</b> brain avg` +
       (inBox >= 0 ? ` · inside box: <b>${esc(d.boxes[inBox].label)}</b>` : "");
     drawOverlays();
   };
@@ -597,7 +588,7 @@ $$(".view").forEach(v => {
 
 // ------------------------------------------------------------------ k-space masks
 function drawMasks() {
-  const d = state.data, m = d.masks, W = m.width, set = state.method === "a" ? m.a : m.b;
+  const d = state.data, m = d.masks, W = m.width, set = m.rebuilds;
   const rows = [m.main, null, ...set], rowH = 6, gap = 2, H = rows.length * (rowH + gap);
   const c = $("#maskCanvas"); c.width = W; c.height = H;
   const g = c.getContext("2d");
@@ -611,9 +602,7 @@ function drawMasks() {
       g.fillRect(x, y, 1, rowH);
     }
   });
-  const extra = state.method === "a"
-    ? `Rows below: the ${d.n} shifted masks for trust map A (${d.unique_a} distinct).`
-    : `Rows below: the ${d.n} masks for trust map B, each dropping ${d.n_drop} of ${d.n_outer} outer lines.`;
+  const extra = `Rows below: the ${d.n} rebuilds for the trust map, each dropping ${d.n_drop} of the ${d.n_outer} measured outer lines.`;
   $("#maskSub").textContent = `Top row: the mask used for the reconstruction (${d.accel}×, k-space columns left to right). ${extra}`;
 }
 
@@ -625,13 +614,12 @@ async function loadStudy() {
   state.study = r;
   $("#studyBody").hidden = false;
   const S = r.summary;
-  $("#summaryTable").innerHTML = `<thead><tr><th>Acceleration</th><th>Trust map</th><th class="num">Pixel ρ, brain (mean)</th><th class="num">range over slices</th><th class="num">Box-level ρ</th><th class="num">Boxes</th><th class="num">Slices</th></tr></thead><tbody>` +
-    S.map(s => `<tr><td>${s.accel}×</td><td>${s.option === "A" ? "A · shifted masks" : "B · dropped lines"}</td><td class="num"><b>${fmt(s.pixel_spearman_fg_mean)}</b></td>
-    <td class="num">${fmt(s.pixel_spearman_fg_min)} to ${fmt(s.pixel_spearman_fg_max)}</td><td class="num"><b>${fmt(s.box_spearman_rel)}</b></td><td class="num">${s.n_boxes}</td><td class="num">${s.n_slices}</td></tr>`).join("") + "</tbody>";
-  const Q = S.filter(s => s.option === "A");
+  $("#summaryTable").innerHTML = `<thead><tr><th>Acceleration</th><th class="num">Pixel ρ, brain (mean)</th><th class="num">range over slices</th><th class="num">Box-level ρ</th><th class="num">Boxes above brain avg</th><th class="num">Boxes</th><th class="num">Slices</th></tr></thead><tbody>` +
+    S.map(s => `<tr><td>${s.accel}×</td><td class="num"><b>${fmt(s.pixel_spearman_fg_mean)}</b></td>
+    <td class="num">${fmt(s.pixel_spearman_fg_min)} to ${fmt(s.pixel_spearman_fg_max)}</td><td class="num"><b>${fmt(s.box_spearman_rel)}</b></td><td class="num">${Math.round(100 * s.boxes_above_avg)}%</td><td class="num">${s.n_boxes}</td><td class="num">${s.n_slices}</td></tr>`).join("") + "</tbody>";
+  const Q = S;
   $("#qualityTable").innerHTML = `<thead><tr><th>Acceleration</th><th class="num">PSNR</th><th class="num">Zero-filled</th><th class="num">SSIM</th></tr></thead><tbody>` +
     Q.map(s => `<tr><td>${s.accel}×</td><td class="num">${fmt(s.psnr_mean, 1)} dB</td><td class="num">${fmt(s.psnr_zf_mean, 1)} dB</td><td class="num">${fmt(s.ssim_mean, 3)}</td></tr>`).join("") + "</tbody>";
-  seg($("#studyMethod"), v => { state.studyMethod = v; drawScatter(); });
   $("#toggleTable").onclick = () => {
     const w = $("#scatterTableWrap"); w.hidden = !w.hidden;
     $("#toggleTable").textContent = w.hidden ? "Show as table" : "Hide table";
@@ -649,8 +637,8 @@ function niceTicks(lo, hi, n = 5) {
 }
 
 function drawScatter() {
-  const M = state.studyMethod, pts = state.study.boxes.map(b => ({
-    ...b, tx: b[`mean_trust_${M}`] / b[`fg_mean_trust_${M}`], ey: b.mean_error / b.fg_mean_error,
+  const pts = state.study.boxes.map(b => ({
+    ...b, tx: b.mean_trust / b.fg_mean_trust, ey: b.mean_error / b.fg_mean_error,
   })).filter(p => isFinite(p.tx) && isFinite(p.ey));
   const host = $("#scatter"), Wpx = Math.max(300, host.clientWidth), H = Math.round(Math.min(460, Wpx * 0.72));
   const pad = { l: 52, r: 16, t: 12, b: 44 };
@@ -683,23 +671,26 @@ function drawScatter() {
       tip.style.left = x + window.scrollX + "px"; tip.style.top = e.clientY + window.scrollY + 14 + "px";
     };
     el.onmouseleave = () => tip.hidden = true;
-    el.onclick = () => openSlice(p.file, p.slice, p.accel, M.toLowerCase());
+    el.onclick = () => openSlice(p.file, p.slice, p.accel);
   });
   $("#scatterTable").innerHTML = `<thead><tr><th>Scan</th><th class="num">Slice</th><th>Label</th><th class="num">Accel</th><th class="num">Trust ×</th><th class="num">Error ×</th></tr></thead><tbody>` +
     pts.map(p => `<tr><td>${esc(p.file.replace("file_brain_", ""))}</td><td class="num">${p.slice}</td><td>${esc(p.label)}</td><td class="num">${p.accel}×</td><td class="num">${p.tx.toFixed(2)}</td><td class="num">${p.ey.toFixed(2)}</td></tr>`).join("") + "</tbody>";
 }
 
-function openSlice(file, slice, accel, method) {
+function openSlice(file, slice, accel) {
   $("#tip").hidden = true;
   state.file = file; $("#file").value = file; fillSlices(false);
   state.slice = slice; $("#slice").value = slice;
   state.accel = accel; setSeg($("#accel"), accel);
-  state.method = method; setSeg($("#method"), method);
   showTab("explore");
   run();
 }
 
-init().then(() => { if (location.hash === "#study") showTab("study"); }).catch(e => { $("#device").textContent = "server not reachable"; console.error(e); });
+init().then(() => {
+  // links: #full opens the research view, #study its Study results tab
+  if (location.hash === "#full" || location.hash === "#study") { simple = false; applyMode(); }
+  if (location.hash === "#study") showTab("study");
+}).catch(e => { $("#device").textContent = "server not reachable"; console.error(e); });
 </script>
 </body>
 </html>

@@ -62,7 +62,7 @@ Blue squares are lesions marked by a radiologist.
 - **‹ ›** (or the arrow keys) goes to the next picture
 - **4× / 8× faster scan** throws away more data, and the guessing grows
 
-Each new picture takes about 10 seconds.
+Each new picture takes a few seconds.
 
 ## Something went wrong?
 

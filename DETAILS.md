@@ -18,10 +18,10 @@ Only slices with at least one fastMRI+ box are processed. Rows with `study_level
 
 | file | content |
 |---|---|
-| `boxes.csv` | one row per box: `file, slice, label, x, y, width, height, accel, mean_trust_A, mean_trust_B, mean_error`, plus foreground means of trust/error for the slice and `gt_max` (for normalising across slices) |
-| `slices.csv` | one row per slice: PSNR / SSIM of the reconstruction (and zero-filled PSNR), Pearson and Spearman correlation of trust vs error over **all** pixels and over **foreground** pixels (`gt > 0.05 * max`) for A and B |
-| `summary.txt` | mean/min/max of the per-slice correlations, and per-box correlation (raw, and normalised by the slice foreground mean) |
-| `figures/*.png` | first N slices: GT, reconstruction, error and trust map, with boxes drawn on all four panels. Row 1 is trust A, row 2 is trust B |
+| `boxes.csv` | one row per box: `file, slice, label, x, y, width, height, accel, mean_trust, mean_error`, plus brain means of trust/error for the slice and `gt_max` (for normalising across slices) |
+| `slices.csv` | one row per slice: PSNR / SSIM of the reconstruction (and zero-filled PSNR), Pearson and Spearman correlation of trust vs error over **all** pixels and over **brain** pixels (`gt > 0.05 * max`) |
+| `summary.txt` | mean/min/max of the per-slice correlations, per-box correlation (raw, and normalised by the slice brain mean), and how many boxes sit above the brain average |
+| `figures/*.png` | first N slices: GT, reconstruction, error and trust map, with boxes drawn on all four panels |
 
 All maps and figures use the **fastMRI+ labelling orientation**: the 320×320 image flipped up/down.
 
@@ -37,12 +37,14 @@ All maps and figures use the **fastMRI+ labelling orientation**: the 320×320 im
 3. **Reconstruction.** `VarNet(num_cascades=12, pools=4, chans=18, sens_pools=4, sens_chans=8)`,
    in `torch.inference_mode()` with batch size 1. It is called as `model(masked_kspace, mask)`,
    the same call the official inference script makes.
-4. **Trust maps.** Each is the pixel-wise std over 10 rebuilds.
-   - **A:** 10 equispaced masks at the same acceleration with different offsets. The offsets
-     are evenly spaced in `[0, adjusted_accel)`; see note (b) below.
-   - **B:** the main mask, where each rebuild randomly drops `round(0.05 × n)` of the *n*
-     acquired lines outside the contiguous center block. That is 3 of 54 lines at 4x and
-     1 of 27 at 8x for 320 columns.
+4. **Trust map.** The pixel-wise std over 10 rebuilds. Each rebuild uses the main mask with
+   `round(0.05 × n)` of the *n* measured lines outside the center block randomly removed
+   (2 of 36 at 4x and 1 of 19 at 8x on these scans). Every rebuild only uses lines the fast scan really
+   measured, so this could run on a real accelerated scan with no ground truth.
+
+   An earlier version also tried shifting the mask to different line positions. It was
+   removed: a shifted mask needs lines a real fast scan never measured, which is only
+   possible here because we start from a fully sampled scan.
 5. **Error map.** `|recon − GT|`.
 6. **Per box.** The mean over `img[y:y+h, x:x+w]` in the flipped frame.
 
@@ -62,7 +64,7 @@ All maps and figures use the **fastMRI+ labelling orientation**: the 320×320 im
   320 lines at 4x and 40 of 320 at 8x.
 - **Center detection.** The 2020 model found the center block from the contiguous run of
   ones in the mask, and the current code does the same when `num_low_frequencies` is not
-  passed. Option B only drops lines outside that run, so the model's center (ACS) block
+  passed. The rebuilds only drop lines outside that run, so the model's center (ACS) block
   does not change.
 - **Box orientation.** fastmri-plus `example.ipynb` reads `reconstruction_rss`, flips it with
   `[:, ::-1, :]`, and draws `(x, y)` to `(x+w, y+h)` directly on the flipped image. The DICOM
@@ -78,18 +80,13 @@ All maps and figures use the **fastMRI+ labelling orientation**: the 320×320 im
 - **Synthetic end-to-end test.** I ran the full pipeline on a synthetic 16-coil scan with a
   planted lesion. The box drawn in the flipped frame lands on the lesion, the computed GT
   matches the stored RSS (relative difference about 1e-7), and the fp16 path runs.
-  Peak GPU memory is about 0.95 GB in fp32, and a slice (21 reconstructions) takes about 6 s.
+  Peak GPU memory is about 0.95 GB in fp32, and a slice (11 reconstructions) takes a few seconds.
 
 **Assumed or chosen (please sanity-check):**
-- **(b) Option A offsets.** With 320 columns, integer offsets only give round(5.44) = 5
-  distinct masks at 4x (11 at 8x). To get 10 different rebuilds I use fractional start
-  offsets `k·adj/10`. All masks have the same spacing and line count, but some are only a
-  one-line shift of each other. The printed "A unique masks" count shows how many were
-  distinct.
-- **Main mask offset.** The main reconstruction uses its own offset (from the file seed), and
-  the A rebuilds are not built around it.
-- **Option B drop count.** "~5%" is rounded to a whole number of lines, with at least 1. At 8x
-  that is a single line, so trust B is a weak perturbation there.
+- **Main mask offset.** The main reconstruction's offset comes from the per-file seed, as in the
+  fastMRI validation transform.
+- **Drop count.** "~5%" is rounded to a whole number of lines, with at least 1. At 8x that is a
+  single line per rebuild, so the trust map is a gentler perturbation there.
 - **Foreground threshold.** `gt > 0.05·max(gt)` is my choice. Correlations over all pixels are
   inflated by the near-zero background, so both versions are reported.
 - **Box pixels.** I take a box as covering `w × h` pixels. PIL's rectangle in the notebook

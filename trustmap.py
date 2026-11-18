@@ -6,11 +6,11 @@ For each annotated FLAIR slice:
   2. undersample with an equispaced mask (fastMRI "equispaced" as used for the
      Nov-2020 brain leaderboard model = today's EquispacedMaskFractionFunc)
   3. reconstruct with the pretrained VarNet (inference only, batch size 1)
-  4. trust maps = pixel-wise std over N rebuilds:
-       A) N different equispaced mask offsets, same acceleration
-       B) main mask, each rebuild randomly drops ~5% of acquired non-center lines
+  4. trust map = pixel-wise std over N rebuilds; each rebuild keeps the same mask but
+     randomly drops ~5% of the acquired non-center lines. This only uses data a real
+     fast scan would have measured.
   5. error map = |recon - gt|
-  6. per fastMRI+ box: mean trust (A, B) and mean error inside the box
+  6. per fastMRI+ box: mean trust and mean error inside the box
   7. per-slice pixel correlation (trust vs error) and per-box correlation
 
 All maps are stored/plotted in the fastMRI+ labelling orientation, i.e. the
@@ -138,11 +138,6 @@ def base_mask(width, accel, meta, offset=None, seed=None) -> np.ndarray:
     return m
 
 
-def adjusted_accel(width, accel) -> float:
-    nlf = round(width * CENTER_FRACTION[accel])
-    return (accel * (nlf - width)) / (nlf * accel - width)
-
-
 def center_run(m: np.ndarray) -> tuple:
     """Contiguous block of acquired lines around W//2 (what VarNet treats as the ACS center)."""
     cent = len(m) // 2
@@ -151,14 +146,9 @@ def center_run(m: np.ndarray) -> tuple:
     return cent - left, cent + right  # [start, stop)
 
 
-def masks_option_a(width, accel, meta, n) -> list:
-    # Integer offsets only give round(adjusted_accel) distinct masks (5 at 4x for W=320),
-    # so we use n evenly spaced (possibly fractional) offsets in [0, adjusted_accel).
-    adj = adjusted_accel(width, accel)
-    return [base_mask(width, accel, meta, offset=k * adj / n) for k in range(n)]
-
-
-def masks_option_b(main: np.ndarray, n, frac, seed) -> tuple:
+def rebuild_masks(main: np.ndarray, n, frac, seed) -> tuple:
+    """n copies of the main mask, each with a random ~frac of the acquired outer lines removed.
+    The center block is never touched, so the model's calibration region stays the same."""
     s, e = center_run(main)
     outer = np.array([i for i in np.flatnonzero(main) if not (s <= i < e)])
     n_drop = max(1, int(round(frac * len(outer))))
@@ -198,32 +188,30 @@ def box_slices(box, shape):
 
 
 # --------------------------------------------------------------------------- figure
-def save_figure(path, gt, rec, err, trust_a, trust_b, boxes, title):
+def save_figure(path, gt, rec, err, trust, boxes, title):
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.patches import Rectangle
 
-    fig, axes = plt.subplots(2, 4, figsize=(16, 8.4))
+    fig, axes = plt.subplots(1, 4, figsize=(16, 4.4))
     vmax = gt.max()
-    emax = np.percentile(err, 99.5)
-    for row, (trust, name) in enumerate([(trust_a, "A: mask offsets"), (trust_b, "B: 5% line drop")]):
-        panels = [
-            (gt, "Ground truth", "gray", 0, vmax),
-            (rec, "Reconstruction", "gray", 0, vmax),
-            (err, "|recon - GT|", "inferno", 0, emax),
-            (trust, f"Trust map {name} (std)", "inferno", 0, np.percentile(trust, 99.5)),
-        ]
-        for ax, (img, t, cmap, lo, hi) in zip(axes[row], panels):
-            im = ax.imshow(img, cmap=cmap, vmin=lo, vmax=hi)
-            ax.set_title(t, fontsize=10)
-            ax.axis("off")
-            if cmap != "gray":
-                fig.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
-            for _, b in boxes.iterrows():
-                ax.add_patch(Rectangle((b.x - 0.5, b.y - 0.5), b.width, b.height,
-                                       fill=False, edgecolor="cyan", linewidth=1.2))
+    panels = [
+        (gt, "Ground truth", "gray", 0, vmax),
+        (rec, "Reconstruction", "gray", 0, vmax),
+        (err, "|recon - GT|", "inferno", 0, np.percentile(err, 99.5)),
+        (trust, "Trust map (std over rebuilds)", "inferno", 0, np.percentile(trust, 99.5)),
+    ]
+    for ax, (img, t, cmap, lo, hi) in zip(axes, panels):
+        im = ax.imshow(img, cmap=cmap, vmin=lo, vmax=hi)
+        ax.set_title(t, fontsize=10)
+        ax.axis("off")
+        if cmap != "gray":
+            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
+        for _, b in boxes.iterrows():
+            ax.add_patch(Rectangle((b.x - 0.5, b.y - 0.5), b.width, b.height,
+                                   fill=False, edgecolor="cyan", linewidth=1.2))
     fig.suptitle(title + "   (fastMRI+ orientation: flipped up/down)", fontsize=11)
     fig.tight_layout()
     fig.savefig(path, dpi=110)
@@ -254,31 +242,24 @@ def compute_slice(hf, fname, sl, boxes, accel, recon, device,
     zf = cc(fastmri.rss(fastmri.complex_abs(fastmri.ifft2c(
         kspace * torch.from_numpy(main).to(device).view(1, 1, -1, 1))), dim=0).cpu())
 
-    ma = masks_option_a(width, accel, meta, n_rebuilds)
-    mb, n_drop, n_outer = masks_option_b(main, n_rebuilds, drop_frac, (*seed, sl, seed_extra))
-    stack_a = np.stack([cc(recon(kspace, m)) for m in ma])
-    stack_b = np.stack([cc(recon(kspace, m)) for m in mb])
+    masks, n_drop, n_outer = rebuild_masks(main, n_rebuilds, drop_frac, (*seed, sl, seed_extra))
+    stack = np.stack([cc(recon(kspace, m)) for m in masks])
     dt = time.perf_counter() - t0
 
     # flip up/down into the fastMRI+ labelling frame
     flip = lambda x: np.ascontiguousarray(x[..., ::-1, :])  # noqa: E731
-    gt, rec, zf, stack_a, stack_b = map(flip, (gt, rec, zf, stack_a, stack_b))
+    gt, rec, zf, stack = map(flip, (gt, rec, zf, stack))
     err = np.abs(rec - gt)
-    trust_a, trust_b = stack_a.std(0), stack_b.std(0)
+    trust = stack.std(0)
 
     fg = gt > fg_thresh * gt.max()
-    pa_all, sa_all = corr(trust_a.ravel(), err.ravel())
-    pb_all, sb_all = corr(trust_b.ravel(), err.ravel())
-    pa_fg, sa_fg = corr(trust_a[fg], err[fg])
-    pb_fg, sb_fg = corr(trust_b[fg], err[fg])
+    p_all, s_all = corr(trust.ravel(), err.ravel())
+    p_fg, s_fg = corr(trust[fg], err[fg])
     s, e = center_run(main)
 
     slice_row = dict(file=fname, slice=sl, accel=accel, n_boxes=len(boxes),
                      psnr=psnr(gt, rec), ssim=ssim(gt, rec), psnr_zero_filled=psnr(gt, zf),
-                     pearson_A_all=pa_all, spearman_A_all=sa_all,
-                     pearson_B_all=pb_all, spearman_B_all=sb_all,
-                     pearson_A_fg=pa_fg, spearman_A_fg=sa_fg,
-                     pearson_B_fg=pb_fg, spearman_B_fg=sb_fg,
+                     pearson_all=p_all, spearman_all=s_all, pearson_fg=p_fg, spearman_fg=s_fg,
                      fp16=recon.amp)
     box_rows = []
     for _, b in boxes.iterrows():
@@ -286,14 +267,13 @@ def compute_slice(hf, fname, sl, boxes, accel, recon, device,
         box_rows.append(dict(
             file=fname, slice=sl, label=b.label, x=b.x, y=b.y, width=b.width, height=b.height,
             accel=accel,
-            mean_trust_A=float(trust_a[ys, xs].mean()), mean_trust_B=float(trust_b[ys, xs].mean()),
-            mean_error=float(err[ys, xs].mean()),
-            # slice-level foreground means so values can be compared across slices
-            fg_mean_trust_A=float(trust_a[fg].mean()), fg_mean_trust_B=float(trust_b[fg].mean()),
-            fg_mean_error=float(err[fg].mean()), gt_max=float(gt.max()),
+            mean_trust=float(trust[ys, xs].mean()), mean_error=float(err[ys, xs].mean()),
+            # slice-level brain means so values can be compared across slices
+            fg_mean_trust=float(trust[fg].mean()), fg_mean_error=float(err[fg].mean()),
+            gt_max=float(gt.max()),
         ))
-    return dict(gt=gt, rec=rec, zf=zf, err=err, trust_a=trust_a, trust_b=trust_b,
-                main_mask=main, masks_a=ma, masks_b=mb, center=(s, e), n_drop=n_drop, n_outer=n_outer,
+    return dict(gt=gt, rec=rec, zf=zf, err=err, trust=trust, fg=fg,
+                main_mask=main, masks=masks, center=(s, e), n_drop=n_drop, n_outer=n_outer,
                 padding=(meta["padding_left"], meta["padding_right"]), width=width,
                 kspace_shape=tuple(kspace.shape), crop=crop, check=check, seconds=dt,
                 slice_row=slice_row, box_rows=box_rows)
@@ -305,19 +285,18 @@ def process_slice(hf, fname, sl, boxes, accel, recon, args, device, fig_dir):
     sr, (s, e) = r["slice_row"], r["center"]
     print(f"  {fname} slice {sl:2d} | kspace {r['kspace_shape']} crop {r['crop']} | "
           f"lines {int(r['main_mask'].sum())}/{r['width']} (acquired cols {r['padding'][0]}-{r['padding'][1] - 1}, "
-          f"center {e - s}), A unique masks {len({m.tobytes() for m in r['masks_a']})}/{len(r['masks_a'])}, "
-          f"B drops {r['n_drop']}/{r['n_outer']} outer lines | PSNR {sr['psnr']:.2f} dB "
+          f"center {e - s}), rebuilds drop {r['n_drop']}/{r['n_outer']} outer lines | PSNR {sr['psnr']:.2f} dB "
           f"(zero-filled {sr['psnr_zero_filled']:.2f}), SSIM {sr['ssim']:.3f} | "
           f"{r['seconds']:.1f}s{' | fp16' if recon.amp else ''}")
     if r["check"]:
         print("   ", r["check"])
     if fig_dir is not None:
         save_figure(fig_dir / f"{fname}_s{sl:02d}_acc{accel}.png", r["gt"], r["rec"], r["err"],
-                    r["trust_a"], r["trust_b"], boxes,
+                    r["trust"], boxes,
                     f"{fname}  slice {sl}  {accel}x  PSNR {sr['psnr']:.1f} dB")
     if args.save_npz:
         np.savez_compressed(args.out / f"acc{accel}" / "arrays" / f"{fname}_s{sl:02d}_acc{accel}.npz",
-                            gt=r["gt"], rec=r["rec"], err=r["err"], trust_a=r["trust_a"], trust_b=r["trust_b"])
+                            gt=r["gt"], rec=r["rec"], err=r["err"], trust=r["trust"])
     return sr, r["box_rows"]
 
 
@@ -385,13 +364,14 @@ def main():
         for c in [c for c in sdf.columns if c.startswith(("pearson", "spearman"))]:
             lines.append(f"  {c:16s} {sdf[c].mean():+.3f} [{sdf[c].min():+.3f}, {sdf[c].max():+.3f}]")
         lines.append("Per-box trust vs error (across all boxes):")
-        for opt in "AB":
-            pr, sr_ = corr(bdf[f"mean_trust_{opt}"].values, bdf.mean_error.values)
-            # ratio to slice foreground mean removes slice-to-slice intensity scale
-            pr2, sr2 = corr((bdf[f"mean_trust_{opt}"] / bdf[f"fg_mean_trust_{opt}"]).values,
-                            (bdf.mean_error / bdf.fg_mean_error).values)
-            lines.append(f"  {opt}: raw pearson {pr:+.3f} spearman {sr_:+.3f} | "
-                         f"normalised-by-slice pearson {pr2:+.3f} spearman {sr2:+.3f}")
+        pr, sr_ = corr(bdf.mean_trust.values, bdf.mean_error.values)
+        # ratio to the slice brain mean removes slice-to-slice intensity scale
+        pr2, sr2 = corr((bdf.mean_trust / bdf.fg_mean_trust).values, (bdf.mean_error / bdf.fg_mean_error).values)
+        lines.append(f"  raw pearson {pr:+.3f} spearman {sr_:+.3f} | "
+                     f"normalised-by-slice pearson {pr2:+.3f} spearman {sr2:+.3f}")
+        ratio = bdf.mean_trust / bdf.fg_mean_trust
+        lines.append(f"Box trust vs slice brain average: median {ratio.median():.2f}x, "
+                     f"{(ratio > 1).mean() * 100:.0f}% of boxes above average")
         summary = "\n".join(lines)
         print(summary)
         (out / "summary.txt").write_text(summary + "\n")
